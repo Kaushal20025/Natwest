@@ -5,8 +5,18 @@ export function activate(context: vscode.ExtensionContext) {
     console.log('ChatGPT Assistant is now active!');
 
     let disposable = vscode.commands.registerCommand('chatgptAssistant.start', async () => {
+
+        // Fetch the API key from VSCode settings
+        const apiKey = vscode.workspace.getConfiguration('chatgptAssistant').get('apiKey') as string;
+
+        // If no API key is found, show an error message
+        if (!apiKey) {
+            vscode.window.showErrorMessage('Please configure your OpenAI API key in the settings.');
+            return;
+        }
+
         const openai = new OpenAI({
-            apiKey: 'sk-bOSZvh5iIIUQRZ8wMyPITDCfR1BuLVUXSpGSy2BttwT3BlbkFJMTkPJHg7WgmnJnpEoxPi47hg8N7m2Ndsovz5Cb_XwA'  // Your API key
+            apiKey: apiKey  // Use the API key from the settings
         });
 
         // Get the current text editor content
@@ -47,3 +57,4 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {}
+
