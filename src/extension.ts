@@ -4,8 +4,8 @@ import OpenAI from 'openai';  // Ensure this package is installed via npm
 export function activate(context: vscode.ExtensionContext) {
     console.log('ChatGPT Assistant is now active!');
 
+    // Register the command for starting the chat
     let disposable = vscode.commands.registerCommand('chatgptAssistant.start', async () => {
-
         // Fetch the API key from VSCode settings
         const apiKey = vscode.workspace.getConfiguration('chatgptAssistant').get('apiKey') as string;
 
@@ -54,7 +54,31 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     context.subscriptions.push(disposable);
+
+    // Register the completion item provider
+    context.subscriptions.push(
+        vscode.languages.registerCompletionItemProvider(
+            { scheme: 'file', language: 'javascript' }, // Change this to the relevant language
+            {
+                provideCompletionItems(document: vscode.TextDocument, position: vscode.Position) {
+                    const completionItems: vscode.CompletionItem[] = [];
+
+                    // Check if the current character before the cursor is '?'
+                    const linePrefix = document.lineAt(position).text.substring(0, position.character);
+                    if (linePrefix.endsWith('?')) {
+                        // Add a completion item
+                        const completionItem = new vscode.CompletionItem('Example Completion', vscode.CompletionItemKind.Text);
+                        completionItem.detail = 'This is a completion suggestion';
+                        completionItem.documentation = 'Details about this completion';
+                        completionItems.push(completionItem);
+                    }
+
+                    return completionItems;
+                }
+            },
+            '?' // Trigger character
+        )
+    );
 }
 
 export function deactivate() {}
-

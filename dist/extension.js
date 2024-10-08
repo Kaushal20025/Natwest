@@ -38,6 +38,7 @@ const vscode = __importStar(__webpack_require__(1));
 const openai_1 = __importDefault(__webpack_require__(2)); // Ensure this package is installed via npm
 function activate(context) {
     console.log('ChatGPT Assistant is now active!');
+    // Register the command for starting the chat
     let disposable = vscode.commands.registerCommand('chatgptAssistant.start', async () => {
         // Fetch the API key from VSCode settings
         const apiKey = vscode.workspace.getConfiguration('chatgptAssistant').get('apiKey');
@@ -81,6 +82,24 @@ function activate(context) {
         }
     });
     context.subscriptions.push(disposable);
+    // Register the completion item provider
+    context.subscriptions.push(vscode.languages.registerCompletionItemProvider({ scheme: 'file', language: 'javascript' }, // Change this to the relevant language
+    {
+        provideCompletionItems(document, position) {
+            const completionItems = [];
+            // Check if the current character before the cursor is '?'
+            const linePrefix = document.lineAt(position).text.substring(0, position.character);
+            if (linePrefix.endsWith('?')) {
+                // Add a completion item
+                const completionItem = new vscode.CompletionItem('Example Completion', vscode.CompletionItemKind.Text);
+                completionItem.detail = 'This is a completion suggestion';
+                completionItem.documentation = 'Details about this completion';
+                completionItems.push(completionItem);
+            }
+            return completionItems;
+        }
+    }, '?' // Trigger character
+    ));
 }
 function deactivate() { }
 
@@ -126,11 +145,11 @@ var _a;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AzureOpenAI = exports.fileFromPath = exports.toFile = exports.UnprocessableEntityError = exports.PermissionDeniedError = exports.InternalServerError = exports.AuthenticationError = exports.BadRequestError = exports.RateLimitError = exports.ConflictError = exports.NotFoundError = exports.APIUserAbortError = exports.APIConnectionTimeoutError = exports.APIConnectionError = exports.APIError = exports.OpenAIError = exports.OpenAI = void 0;
 const Errors = __importStar(__webpack_require__(3));
-const Uploads = __importStar(__webpack_require__(66));
-const qs = __importStar(__webpack_require__(67));
+const Uploads = __importStar(__webpack_require__(67));
+const qs = __importStar(__webpack_require__(68));
 const Core = __importStar(__webpack_require__(4));
-const Pagination = __importStar(__webpack_require__(71));
-const API = __importStar(__webpack_require__(72));
+const Pagination = __importStar(__webpack_require__(72));
+const API = __importStar(__webpack_require__(73));
 /**
  * API Client for interfacing with the OpenAI API.
  */
@@ -558,13 +577,13 @@ var __classPrivateFieldGet = (this && this.__classPrivateFieldGet) || function (
 };
 var _AbstractPage_client;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.isObj = exports.toBase64 = exports.getRequiredHeader = exports.isHeadersProtocol = exports.isRunningInBrowser = exports.debug = exports.hasOwn = exports.isEmptyObj = exports.maybeCoerceBoolean = exports.maybeCoerceFloat = exports.maybeCoerceInteger = exports.coerceBoolean = exports.coerceFloat = exports.coerceInteger = exports.readEnv = exports.ensurePresent = exports.castToError = exports.sleep = exports.safeJSON = exports.isRequestOptions = exports.createResponseHeaders = exports.PagePromise = exports.AbstractPage = exports.APIClient = exports.APIPromise = exports.createForm = exports.multipartFormRequestOptions = exports.maybeMultipartFormRequestOptions = void 0;
+exports.isObj = exports.toBase64 = exports.getHeader = exports.getRequiredHeader = exports.isHeadersProtocol = exports.isRunningInBrowser = exports.debug = exports.hasOwn = exports.isEmptyObj = exports.maybeCoerceBoolean = exports.maybeCoerceFloat = exports.maybeCoerceInteger = exports.coerceBoolean = exports.coerceFloat = exports.coerceInteger = exports.readEnv = exports.ensurePresent = exports.castToError = exports.sleep = exports.safeJSON = exports.isRequestOptions = exports.createResponseHeaders = exports.PagePromise = exports.AbstractPage = exports.APIClient = exports.APIPromise = exports.createForm = exports.multipartFormRequestOptions = exports.maybeMultipartFormRequestOptions = void 0;
 const version_1 = __webpack_require__(5);
 const streaming_1 = __webpack_require__(6);
 const error_1 = __webpack_require__(3);
 const index_1 = __webpack_require__(7);
-const uploads_1 = __webpack_require__(66);
-var uploads_2 = __webpack_require__(66);
+const uploads_1 = __webpack_require__(67);
+var uploads_2 = __webpack_require__(67);
 Object.defineProperty(exports, "maybeMultipartFormRequestOptions", ({ enumerable: true, get: function () { return uploads_2.maybeMultipartFormRequestOptions; } }));
 Object.defineProperty(exports, "multipartFormRequestOptions", ({ enumerable: true, get: function () { return uploads_2.multipartFormRequestOptions; } }));
 Object.defineProperty(exports, "createForm", ({ enumerable: true, get: function () { return uploads_2.createForm; } }));
@@ -642,7 +661,9 @@ class APIPromise extends Promise {
         return this.responsePromise.then((p) => p.response);
     }
     /**
-     * Gets the parsed response data and the raw `Response` instance.
+     * Gets the parsed response data, the raw `Response` instance and the ID of the request,
+     * returned via the X-Request-ID header which is useful for debugging requests and reporting
+     * issues to OpenAI.
      *
      * If you just want to get the raw `Response` instance without parsing it,
      * you can use {@link asResponse()}.
@@ -656,7 +677,7 @@ class APIPromise extends Promise {
      */
     async withResponse() {
         const [data, response] = await Promise.all([this.parse(), this.asResponse()]);
-        return { data, response };
+        return { data, response, request_id: response.headers.get('x-request-id') };
     }
     parse() {
         if (!this.parsedPromise) {
@@ -806,7 +827,11 @@ class APIClient {
         if ((0, uploads_1.isMultipartBody)(options.body) && index_1.kind !== 'node') {
             delete reqHeaders['content-type'];
         }
-        reqHeaders['x-stainless-retry-count'] = String(retryCount);
+        // Don't set the retry count header if it was already set or removed by the caller. We check `headers`,
+        // which can contain nulls, instead of `reqHeaders` to account for the removal case.
+        if ((0, exports.getHeader)(headers, 'x-stainless-retry-count') === undefined) {
+            reqHeaders['x-stainless-retry-count'] = String(retryCount);
+        }
         this.validateHeaders(reqHeaders, headers);
         return reqHeaders;
     }
@@ -1407,6 +1432,14 @@ const isHeadersProtocol = (headers) => {
 };
 exports.isHeadersProtocol = isHeadersProtocol;
 const getRequiredHeader = (headers, header) => {
+    const foundHeader = (0, exports.getHeader)(headers, header);
+    if (foundHeader === undefined) {
+        throw new Error(`Could not find ${header} header`);
+    }
+    return foundHeader;
+};
+exports.getRequiredHeader = getRequiredHeader;
+const getHeader = (headers, header) => {
     const lowerCasedHeader = header.toLowerCase();
     if ((0, exports.isHeadersProtocol)(headers)) {
         // to deal with the case where the header looks like Stainless-Event-Id
@@ -1430,9 +1463,9 @@ const getRequiredHeader = (headers, header) => {
             return value;
         }
     }
-    throw new Error(`Could not find ${header} header`);
+    return undefined;
 };
-exports.getRequiredHeader = getRequiredHeader;
+exports.getHeader = getHeader;
 /**
  * Encodes a string to Base64 format.
  */
@@ -1462,7 +1495,7 @@ exports.isObj = isObj;
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.VERSION = void 0;
-exports.VERSION = '4.63.0'; // x-release-please-version
+exports.VERSION = '4.67.2'; // x-release-please-version
 //# sourceMappingURL=version.js.map
 
 /***/ }),
@@ -1475,6 +1508,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.readableStreamAsyncIterable = exports._decodeChunks = exports._iterSSEMessages = exports.Stream = void 0;
 const index_1 = __webpack_require__(7);
 const error_1 = __webpack_require__(3);
+const line_1 = __webpack_require__(66);
 const error_2 = __webpack_require__(3);
 class Stream {
     constructor(iterator, controller) {
@@ -1552,7 +1586,7 @@ class Stream {
     static fromReadableStream(readableStream, controller) {
         let consumed = false;
         async function* iterLines() {
-            const lineDecoder = new LineDecoder();
+            const lineDecoder = new line_1.LineDecoder();
             const iter = readableStreamAsyncIterable(readableStream);
             for await (const chunk of iter) {
                 for (const line of lineDecoder.decode(chunk)) {
@@ -1658,7 +1692,7 @@ async function* _iterSSEMessages(response, controller) {
         throw new error_1.OpenAIError(`Attempted to iterate over a response with no body`);
     }
     const sseDecoder = new SSEDecoder();
-    const lineDecoder = new LineDecoder();
+    const lineDecoder = new line_1.LineDecoder();
     const iter = readableStreamAsyncIterable(response.body);
     for await (const sseChunk of iterSSEChunks(iter)) {
         for (const line of lineDecoder.decode(sseChunk)) {
@@ -1768,91 +1802,9 @@ class SSEDecoder {
         return null;
     }
 }
-/**
- * A re-implementation of httpx's `LineDecoder` in Python that handles incrementally
- * reading lines from text.
- *
- * https://github.com/encode/httpx/blob/920333ea98118e9cf617f246905d7b202510941c/httpx/_decoders.py#L258
- */
-class LineDecoder {
-    constructor() {
-        this.buffer = [];
-        this.trailingCR = false;
-    }
-    decode(chunk) {
-        let text = this.decodeText(chunk);
-        if (this.trailingCR) {
-            text = '\r' + text;
-            this.trailingCR = false;
-        }
-        if (text.endsWith('\r')) {
-            this.trailingCR = true;
-            text = text.slice(0, -1);
-        }
-        if (!text) {
-            return [];
-        }
-        const trailingNewline = LineDecoder.NEWLINE_CHARS.has(text[text.length - 1] || '');
-        let lines = text.split(LineDecoder.NEWLINE_REGEXP);
-        // if there is a trailing new line then the last entry will be an empty
-        // string which we don't care about
-        if (trailingNewline) {
-            lines.pop();
-        }
-        if (lines.length === 1 && !trailingNewline) {
-            this.buffer.push(lines[0]);
-            return [];
-        }
-        if (this.buffer.length > 0) {
-            lines = [this.buffer.join('') + lines[0], ...lines.slice(1)];
-            this.buffer = [];
-        }
-        if (!trailingNewline) {
-            this.buffer = [lines.pop() || ''];
-        }
-        return lines;
-    }
-    decodeText(bytes) {
-        if (bytes == null)
-            return '';
-        if (typeof bytes === 'string')
-            return bytes;
-        // Node:
-        if (typeof Buffer !== 'undefined') {
-            if (bytes instanceof Buffer) {
-                return bytes.toString();
-            }
-            if (bytes instanceof Uint8Array) {
-                return Buffer.from(bytes).toString();
-            }
-            throw new error_1.OpenAIError(`Unexpected: received non-Uint8Array (${bytes.constructor.name}) stream chunk in an environment with a global "Buffer" defined, which this library assumes to be Node. Please report this error.`);
-        }
-        // Browser
-        if (typeof TextDecoder !== 'undefined') {
-            if (bytes instanceof Uint8Array || bytes instanceof ArrayBuffer) {
-                this.textDecoder ?? (this.textDecoder = new TextDecoder('utf8'));
-                return this.textDecoder.decode(bytes);
-            }
-            throw new error_1.OpenAIError(`Unexpected: received non-Uint8Array/ArrayBuffer (${bytes.constructor.name}) in a web platform. Please report this error.`);
-        }
-        throw new error_1.OpenAIError(`Unexpected: neither Buffer nor TextDecoder are available as globals. Please report this error.`);
-    }
-    flush() {
-        if (!this.buffer.length && !this.trailingCR) {
-            return [];
-        }
-        const lines = [this.buffer.join('')];
-        this.buffer = [];
-        this.trailingCR = false;
-        return lines;
-    }
-}
-// prettier-ignore
-LineDecoder.NEWLINE_CHARS = new Set(['\n', '\r']);
-LineDecoder.NEWLINE_REGEXP = /\r\n|[\n\r]/g;
 /** This is an internal helper function that's just used for testing */
 function _decodeChunks(chunks) {
-    const decoder = new LineDecoder();
+    const decoder = new line_1.LineDecoder();
     const lines = [];
     for (const chunk of chunks) {
         lines.push(...decoder.decode(chunk));
@@ -8852,6 +8804,100 @@ exports["default"] = isPlainObject;
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.LineDecoder = void 0;
+const error_1 = __webpack_require__(3);
+/**
+ * A re-implementation of httpx's `LineDecoder` in Python that handles incrementally
+ * reading lines from text.
+ *
+ * https://github.com/encode/httpx/blob/920333ea98118e9cf617f246905d7b202510941c/httpx/_decoders.py#L258
+ */
+class LineDecoder {
+    constructor() {
+        this.buffer = [];
+        this.trailingCR = false;
+    }
+    decode(chunk) {
+        let text = this.decodeText(chunk);
+        if (this.trailingCR) {
+            text = '\r' + text;
+            this.trailingCR = false;
+        }
+        if (text.endsWith('\r')) {
+            this.trailingCR = true;
+            text = text.slice(0, -1);
+        }
+        if (!text) {
+            return [];
+        }
+        const trailingNewline = LineDecoder.NEWLINE_CHARS.has(text[text.length - 1] || '');
+        let lines = text.split(LineDecoder.NEWLINE_REGEXP);
+        // if there is a trailing new line then the last entry will be an empty
+        // string which we don't care about
+        if (trailingNewline) {
+            lines.pop();
+        }
+        if (lines.length === 1 && !trailingNewline) {
+            this.buffer.push(lines[0]);
+            return [];
+        }
+        if (this.buffer.length > 0) {
+            lines = [this.buffer.join('') + lines[0], ...lines.slice(1)];
+            this.buffer = [];
+        }
+        if (!trailingNewline) {
+            this.buffer = [lines.pop() || ''];
+        }
+        return lines;
+    }
+    decodeText(bytes) {
+        if (bytes == null)
+            return '';
+        if (typeof bytes === 'string')
+            return bytes;
+        // Node:
+        if (typeof Buffer !== 'undefined') {
+            if (bytes instanceof Buffer) {
+                return bytes.toString();
+            }
+            if (bytes instanceof Uint8Array) {
+                return Buffer.from(bytes).toString();
+            }
+            throw new error_1.OpenAIError(`Unexpected: received non-Uint8Array (${bytes.constructor.name}) stream chunk in an environment with a global "Buffer" defined, which this library assumes to be Node. Please report this error.`);
+        }
+        // Browser
+        if (typeof TextDecoder !== 'undefined') {
+            if (bytes instanceof Uint8Array || bytes instanceof ArrayBuffer) {
+                this.textDecoder ?? (this.textDecoder = new TextDecoder('utf8'));
+                return this.textDecoder.decode(bytes);
+            }
+            throw new error_1.OpenAIError(`Unexpected: received non-Uint8Array/ArrayBuffer (${bytes.constructor.name}) in a web platform. Please report this error.`);
+        }
+        throw new error_1.OpenAIError(`Unexpected: neither Buffer nor TextDecoder are available as globals. Please report this error.`);
+    }
+    flush() {
+        if (!this.buffer.length && !this.trailingCR) {
+            return [];
+        }
+        const lines = [this.buffer.join('')];
+        this.buffer = [];
+        this.trailingCR = false;
+        return lines;
+    }
+}
+exports.LineDecoder = LineDecoder;
+// prettier-ignore
+LineDecoder.NEWLINE_CHARS = new Set(['\n', '\r']);
+LineDecoder.NEWLINE_REGEXP = /\r\n|[\n\r]/g;
+//# sourceMappingURL=line.js.map
+
+/***/ }),
+/* 67 */
+/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.createForm = exports.multipartFormRequestOptions = exports.maybeMultipartFormRequestOptions = exports.isMultipartBody = exports.toFile = exports.isUploadable = exports.isBlobLike = exports.isFileLike = exports.isResponseLike = exports.fileFromPath = void 0;
 const index_1 = __webpack_require__(7);
 var index_2 = __webpack_require__(7);
@@ -9023,14 +9069,14 @@ const addFormValue = async (form, key, value) => {
 //# sourceMappingURL=uploads.js.map
 
 /***/ }),
-/* 67 */
+/* 68 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.formats = exports.stringify = void 0;
-const formats_1 = __webpack_require__(68);
+const formats_1 = __webpack_require__(69);
 const formats = {
     formatters: formats_1.formatters,
     RFC1738: formats_1.RFC1738,
@@ -9038,12 +9084,12 @@ const formats = {
     default: formats_1.default_format,
 };
 exports.formats = formats;
-var stringify_1 = __webpack_require__(69);
+var stringify_1 = __webpack_require__(70);
 Object.defineProperty(exports, "stringify", ({ enumerable: true, get: function () { return stringify_1.stringify; } }));
 //# sourceMappingURL=index.js.map
 
 /***/ }),
-/* 68 */
+/* 69 */
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -9060,15 +9106,15 @@ exports.RFC3986 = 'RFC3986';
 //# sourceMappingURL=formats.js.map
 
 /***/ }),
-/* 69 */
+/* 70 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.stringify = void 0;
-const utils_1 = __webpack_require__(70);
-const formats_1 = __webpack_require__(68);
+const utils_1 = __webpack_require__(71);
+const formats_1 = __webpack_require__(69);
 const has = Object.prototype.hasOwnProperty;
 const array_prefix_generators = {
     brackets(prefix) {
@@ -9346,14 +9392,14 @@ exports.stringify = stringify;
 //# sourceMappingURL=stringify.js.map
 
 /***/ }),
-/* 70 */
+/* 71 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.maybe_map = exports.combine = exports.is_buffer = exports.is_regexp = exports.compact = exports.encode = exports.decode = exports.assign_single_source = exports.merge = void 0;
-const formats_1 = __webpack_require__(68);
+const formats_1 = __webpack_require__(69);
 const has = Object.prototype.hasOwnProperty;
 const is_array = Array.isArray;
 const hex_table = (() => {
@@ -9581,7 +9627,7 @@ exports.maybe_map = maybe_map;
 //# sourceMappingURL=utils.js.map
 
 /***/ }),
-/* 71 */
+/* 72 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 "use strict";
@@ -9651,7 +9697,7 @@ exports.CursorPage = CursorPage;
 //# sourceMappingURL=pagination.js.map
 
 /***/ }),
-/* 72 */
+/* 73 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -9673,48 +9719,33 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Uploads = exports.Moderations = exports.Models = exports.ModelsPage = exports.Images = exports.FineTuning = exports.Files = exports.FileObjectsPage = exports.Embeddings = exports.Completions = exports.Beta = exports.Batches = exports.BatchesPage = exports.Audio = void 0;
-__exportStar(__webpack_require__(73), exports);
-__exportStar(__webpack_require__(77), exports);
-var audio_1 = __webpack_require__(78);
+__exportStar(__webpack_require__(74), exports);
+__exportStar(__webpack_require__(78), exports);
+var audio_1 = __webpack_require__(79);
 Object.defineProperty(exports, "Audio", ({ enumerable: true, get: function () { return audio_1.Audio; } }));
-var batches_1 = __webpack_require__(82);
+var batches_1 = __webpack_require__(83);
 Object.defineProperty(exports, "BatchesPage", ({ enumerable: true, get: function () { return batches_1.BatchesPage; } }));
 Object.defineProperty(exports, "Batches", ({ enumerable: true, get: function () { return batches_1.Batches; } }));
-var beta_1 = __webpack_require__(83);
+var beta_1 = __webpack_require__(84);
 Object.defineProperty(exports, "Beta", ({ enumerable: true, get: function () { return beta_1.Beta; } }));
-var completions_1 = __webpack_require__(105);
+var completions_1 = __webpack_require__(106);
 Object.defineProperty(exports, "Completions", ({ enumerable: true, get: function () { return completions_1.Completions; } }));
-var embeddings_1 = __webpack_require__(106);
+var embeddings_1 = __webpack_require__(107);
 Object.defineProperty(exports, "Embeddings", ({ enumerable: true, get: function () { return embeddings_1.Embeddings; } }));
-var files_1 = __webpack_require__(107);
+var files_1 = __webpack_require__(108);
 Object.defineProperty(exports, "FileObjectsPage", ({ enumerable: true, get: function () { return files_1.FileObjectsPage; } }));
 Object.defineProperty(exports, "Files", ({ enumerable: true, get: function () { return files_1.Files; } }));
-var fine_tuning_1 = __webpack_require__(108);
+var fine_tuning_1 = __webpack_require__(109);
 Object.defineProperty(exports, "FineTuning", ({ enumerable: true, get: function () { return fine_tuning_1.FineTuning; } }));
-var images_1 = __webpack_require__(111);
+var images_1 = __webpack_require__(112);
 Object.defineProperty(exports, "Images", ({ enumerable: true, get: function () { return images_1.Images; } }));
-var models_1 = __webpack_require__(112);
+var models_1 = __webpack_require__(113);
 Object.defineProperty(exports, "ModelsPage", ({ enumerable: true, get: function () { return models_1.ModelsPage; } }));
 Object.defineProperty(exports, "Models", ({ enumerable: true, get: function () { return models_1.Models; } }));
-var moderations_1 = __webpack_require__(113);
+var moderations_1 = __webpack_require__(114);
 Object.defineProperty(exports, "Moderations", ({ enumerable: true, get: function () { return moderations_1.Moderations; } }));
-var uploads_1 = __webpack_require__(114);
+var uploads_1 = __webpack_require__(115);
 Object.defineProperty(exports, "Uploads", ({ enumerable: true, get: function () { return uploads_1.Uploads; } }));
-//# sourceMappingURL=index.js.map
-
-/***/ }),
-/* 73 */
-/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
-
-"use strict";
-
-// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.Chat = exports.Completions = void 0;
-var completions_1 = __webpack_require__(74);
-Object.defineProperty(exports, "Completions", ({ enumerable: true, get: function () { return completions_1.Completions; } }));
-var chat_1 = __webpack_require__(76);
-Object.defineProperty(exports, "Chat", ({ enumerable: true, get: function () { return chat_1.Chat; } }));
 //# sourceMappingURL=index.js.map
 
 /***/ }),
@@ -9725,8 +9756,23 @@ Object.defineProperty(exports, "Chat", ({ enumerable: true, get: function () { r
 
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.Chat = exports.Completions = void 0;
+var completions_1 = __webpack_require__(75);
+Object.defineProperty(exports, "Completions", ({ enumerable: true, get: function () { return completions_1.Completions; } }));
+var chat_1 = __webpack_require__(77);
+Object.defineProperty(exports, "Chat", ({ enumerable: true, get: function () { return chat_1.Chat; } }));
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+/* 75 */
+/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
+
+"use strict";
+
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Completions = void 0;
-const resource_1 = __webpack_require__(75);
+const resource_1 = __webpack_require__(76);
 class Completions extends resource_1.APIResource {
     create(body, options) {
         return this._client.post('/chat/completions', { body, ...options, stream: body.stream ?? false });
@@ -9738,7 +9784,7 @@ exports.Completions = Completions;
 //# sourceMappingURL=completions.js.map
 
 /***/ }),
-/* 75 */
+/* 76 */
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -9755,7 +9801,7 @@ exports.APIResource = APIResource;
 //# sourceMappingURL=resource.js.map
 
 /***/ }),
-/* 76 */
+/* 77 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -9786,8 +9832,8 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Chat = void 0;
-const resource_1 = __webpack_require__(75);
-const CompletionsAPI = __importStar(__webpack_require__(74));
+const resource_1 = __webpack_require__(76);
+const CompletionsAPI = __importStar(__webpack_require__(75));
 class Chat extends resource_1.APIResource {
     constructor() {
         super(...arguments);
@@ -9801,7 +9847,7 @@ exports.Chat = Chat;
 //# sourceMappingURL=chat.js.map
 
 /***/ }),
-/* 77 */
+/* 78 */
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -9811,7 +9857,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 //# sourceMappingURL=shared.js.map
 
 /***/ }),
-/* 78 */
+/* 79 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -9842,10 +9888,10 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Audio = void 0;
-const resource_1 = __webpack_require__(75);
-const SpeechAPI = __importStar(__webpack_require__(79));
-const TranscriptionsAPI = __importStar(__webpack_require__(80));
-const TranslationsAPI = __importStar(__webpack_require__(81));
+const resource_1 = __webpack_require__(76);
+const SpeechAPI = __importStar(__webpack_require__(80));
+const TranscriptionsAPI = __importStar(__webpack_require__(81));
+const TranslationsAPI = __importStar(__webpack_require__(82));
 class Audio extends resource_1.APIResource {
     constructor() {
         super(...arguments);
@@ -9863,7 +9909,7 @@ exports.Audio = Audio;
 //# sourceMappingURL=audio.js.map
 
 /***/ }),
-/* 79 */
+/* 80 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 "use strict";
@@ -9871,7 +9917,7 @@ exports.Audio = Audio;
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Speech = void 0;
-const resource_1 = __webpack_require__(75);
+const resource_1 = __webpack_require__(76);
 class Speech extends resource_1.APIResource {
     /**
      * Generates audio from the input text.
@@ -9884,53 +9930,6 @@ exports.Speech = Speech;
 (function (Speech) {
 })(Speech = exports.Speech || (exports.Speech = {}));
 //# sourceMappingURL=speech.js.map
-
-/***/ }),
-/* 80 */
-/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
-
-"use strict";
-
-// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.Transcriptions = void 0;
-const resource_1 = __webpack_require__(75);
-const Core = __importStar(__webpack_require__(4));
-class Transcriptions extends resource_1.APIResource {
-    /**
-     * Transcribes audio into the input language.
-     */
-    create(body, options) {
-        return this._client.post('/audio/transcriptions', Core.multipartFormRequestOptions({ body, ...options }));
-    }
-}
-exports.Transcriptions = Transcriptions;
-(function (Transcriptions) {
-})(Transcriptions = exports.Transcriptions || (exports.Transcriptions = {}));
-//# sourceMappingURL=transcriptions.js.map
 
 /***/ }),
 /* 81 */
@@ -9963,21 +9962,18 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.Translations = void 0;
-const resource_1 = __webpack_require__(75);
+exports.Transcriptions = void 0;
+const resource_1 = __webpack_require__(76);
 const Core = __importStar(__webpack_require__(4));
-class Translations extends resource_1.APIResource {
-    /**
-     * Translates audio into English.
-     */
+class Transcriptions extends resource_1.APIResource {
     create(body, options) {
-        return this._client.post('/audio/translations', Core.multipartFormRequestOptions({ body, ...options }));
+        return this._client.post('/audio/transcriptions', Core.multipartFormRequestOptions({ body, ...options }));
     }
 }
-exports.Translations = Translations;
-(function (Translations) {
-})(Translations = exports.Translations || (exports.Translations = {}));
-//# sourceMappingURL=translations.js.map
+exports.Transcriptions = Transcriptions;
+(function (Transcriptions) {
+})(Transcriptions = exports.Transcriptions || (exports.Transcriptions = {}));
+//# sourceMappingURL=transcriptions.js.map
 
 /***/ }),
 /* 82 */
@@ -10010,11 +10006,55 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.Translations = void 0;
+const resource_1 = __webpack_require__(76);
+const Core = __importStar(__webpack_require__(4));
+class Translations extends resource_1.APIResource {
+    create(body, options) {
+        return this._client.post('/audio/translations', Core.multipartFormRequestOptions({ body, ...options }));
+    }
+}
+exports.Translations = Translations;
+(function (Translations) {
+})(Translations = exports.Translations || (exports.Translations = {}));
+//# sourceMappingURL=translations.js.map
+
+/***/ }),
+/* 83 */
+/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+
+"use strict";
+
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.BatchesPage = exports.Batches = void 0;
-const resource_1 = __webpack_require__(75);
+const resource_1 = __webpack_require__(76);
 const core_1 = __webpack_require__(4);
-const BatchesAPI = __importStar(__webpack_require__(82));
-const pagination_1 = __webpack_require__(71);
+const BatchesAPI = __importStar(__webpack_require__(83));
+const pagination_1 = __webpack_require__(72);
 class Batches extends resource_1.APIResource {
     /**
      * Creates and executes a batch from an uploaded file of requests
@@ -10053,63 +10093,6 @@ exports.BatchesPage = BatchesPage;
 //# sourceMappingURL=batches.js.map
 
 /***/ }),
-/* 83 */
-/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
-
-"use strict";
-
-// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.Beta = void 0;
-const resource_1 = __webpack_require__(75);
-const AssistantsAPI = __importStar(__webpack_require__(84));
-const ChatAPI = __importStar(__webpack_require__(85));
-const ThreadsAPI = __importStar(__webpack_require__(96));
-const VectorStoresAPI = __importStar(__webpack_require__(101));
-class Beta extends resource_1.APIResource {
-    constructor() {
-        super(...arguments);
-        this.vectorStores = new VectorStoresAPI.VectorStores(this._client);
-        this.chat = new ChatAPI.Chat(this._client);
-        this.assistants = new AssistantsAPI.Assistants(this._client);
-        this.threads = new ThreadsAPI.Threads(this._client);
-    }
-}
-exports.Beta = Beta;
-(function (Beta) {
-    Beta.VectorStores = VectorStoresAPI.VectorStores;
-    Beta.VectorStoresPage = VectorStoresAPI.VectorStoresPage;
-    Beta.Chat = ChatAPI.Chat;
-    Beta.Assistants = AssistantsAPI.Assistants;
-    Beta.AssistantsPage = AssistantsAPI.AssistantsPage;
-    Beta.Threads = ThreadsAPI.Threads;
-})(Beta = exports.Beta || (exports.Beta = {}));
-//# sourceMappingURL=beta.js.map
-
-/***/ }),
 /* 84 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
@@ -10140,11 +10123,68 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.Beta = void 0;
+const resource_1 = __webpack_require__(76);
+const AssistantsAPI = __importStar(__webpack_require__(85));
+const ChatAPI = __importStar(__webpack_require__(86));
+const ThreadsAPI = __importStar(__webpack_require__(97));
+const VectorStoresAPI = __importStar(__webpack_require__(102));
+class Beta extends resource_1.APIResource {
+    constructor() {
+        super(...arguments);
+        this.vectorStores = new VectorStoresAPI.VectorStores(this._client);
+        this.chat = new ChatAPI.Chat(this._client);
+        this.assistants = new AssistantsAPI.Assistants(this._client);
+        this.threads = new ThreadsAPI.Threads(this._client);
+    }
+}
+exports.Beta = Beta;
+(function (Beta) {
+    Beta.VectorStores = VectorStoresAPI.VectorStores;
+    Beta.VectorStoresPage = VectorStoresAPI.VectorStoresPage;
+    Beta.Chat = ChatAPI.Chat;
+    Beta.Assistants = AssistantsAPI.Assistants;
+    Beta.AssistantsPage = AssistantsAPI.AssistantsPage;
+    Beta.Threads = ThreadsAPI.Threads;
+})(Beta = exports.Beta || (exports.Beta = {}));
+//# sourceMappingURL=beta.js.map
+
+/***/ }),
+/* 85 */
+/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+
+"use strict";
+
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AssistantsPage = exports.Assistants = void 0;
-const resource_1 = __webpack_require__(75);
+const resource_1 = __webpack_require__(76);
 const core_1 = __webpack_require__(4);
-const AssistantsAPI = __importStar(__webpack_require__(84));
-const pagination_1 = __webpack_require__(71);
+const AssistantsAPI = __importStar(__webpack_require__(85));
+const pagination_1 = __webpack_require__(72);
 class Assistants extends resource_1.APIResource {
     /**
      * Create an assistant with a model and instructions.
@@ -10205,7 +10245,7 @@ exports.AssistantsPage = AssistantsPage;
 //# sourceMappingURL=assistants.js.map
 
 /***/ }),
-/* 85 */
+/* 86 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -10236,8 +10276,8 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Chat = void 0;
-const resource_1 = __webpack_require__(75);
-const CompletionsAPI = __importStar(__webpack_require__(86));
+const resource_1 = __webpack_require__(76);
+const CompletionsAPI = __importStar(__webpack_require__(87));
 class Chat extends resource_1.APIResource {
     constructor() {
         super(...arguments);
@@ -10251,7 +10291,7 @@ exports.Chat = Chat;
 //# sourceMappingURL=chat.js.map
 
 /***/ }),
-/* 86 */
+/* 87 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 "use strict";
@@ -10259,19 +10299,19 @@ exports.Chat = Chat;
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Completions = exports.ChatCompletionStream = exports.ParsingToolFunction = exports.ParsingFunction = exports.ChatCompletionStreamingRunner = exports.ChatCompletionRunner = void 0;
-const resource_1 = __webpack_require__(75);
-const ChatCompletionRunner_1 = __webpack_require__(87);
-var ChatCompletionRunner_2 = __webpack_require__(87);
+const resource_1 = __webpack_require__(76);
+const ChatCompletionRunner_1 = __webpack_require__(88);
+var ChatCompletionRunner_2 = __webpack_require__(88);
 Object.defineProperty(exports, "ChatCompletionRunner", ({ enumerable: true, get: function () { return ChatCompletionRunner_2.ChatCompletionRunner; } }));
-const ChatCompletionStreamingRunner_1 = __webpack_require__(93);
-var ChatCompletionStreamingRunner_2 = __webpack_require__(93);
+const ChatCompletionStreamingRunner_1 = __webpack_require__(94);
+var ChatCompletionStreamingRunner_2 = __webpack_require__(94);
 Object.defineProperty(exports, "ChatCompletionStreamingRunner", ({ enumerable: true, get: function () { return ChatCompletionStreamingRunner_2.ChatCompletionStreamingRunner; } }));
-var RunnableFunction_1 = __webpack_require__(89);
+var RunnableFunction_1 = __webpack_require__(90);
 Object.defineProperty(exports, "ParsingFunction", ({ enumerable: true, get: function () { return RunnableFunction_1.ParsingFunction; } }));
 Object.defineProperty(exports, "ParsingToolFunction", ({ enumerable: true, get: function () { return RunnableFunction_1.ParsingToolFunction; } }));
-const ChatCompletionStream_1 = __webpack_require__(94);
-const parser_1 = __webpack_require__(92);
-var ChatCompletionStream_2 = __webpack_require__(94);
+const ChatCompletionStream_1 = __webpack_require__(95);
+const parser_1 = __webpack_require__(93);
+var ChatCompletionStream_2 = __webpack_require__(95);
 Object.defineProperty(exports, "ChatCompletionStream", ({ enumerable: true, get: function () { return ChatCompletionStream_2.ChatCompletionStream; } }));
 class Completions extends resource_1.APIResource {
     parse(body, options) {
@@ -10309,15 +10349,15 @@ exports.Completions = Completions;
 //# sourceMappingURL=completions.js.map
 
 /***/ }),
-/* 87 */
+/* 88 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ChatCompletionRunner = void 0;
-const AbstractChatCompletionRunner_1 = __webpack_require__(88);
-const chatCompletionUtils_1 = __webpack_require__(90);
+const AbstractChatCompletionRunner_1 = __webpack_require__(89);
+const chatCompletionUtils_1 = __webpack_require__(91);
 class ChatCompletionRunner extends AbstractChatCompletionRunner_1.AbstractChatCompletionRunner {
     /** @deprecated - please use `runTools` instead. */
     static runFunctions(client, params, options) {
@@ -10349,7 +10389,7 @@ exports.ChatCompletionRunner = ChatCompletionRunner;
 //# sourceMappingURL=ChatCompletionRunner.js.map
 
 /***/ }),
-/* 88 */
+/* 89 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -10363,10 +10403,10 @@ var _AbstractChatCompletionRunner_instances, _AbstractChatCompletionRunner_getFi
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AbstractChatCompletionRunner = void 0;
 const error_1 = __webpack_require__(3);
-const RunnableFunction_1 = __webpack_require__(89);
-const chatCompletionUtils_1 = __webpack_require__(90);
-const EventStream_1 = __webpack_require__(91);
-const parser_1 = __webpack_require__(92);
+const RunnableFunction_1 = __webpack_require__(90);
+const chatCompletionUtils_1 = __webpack_require__(91);
+const EventStream_1 = __webpack_require__(92);
+const parser_1 = __webpack_require__(93);
 const DEFAULT_MAX_CHAT_COMPLETIONS = 10;
 class AbstractChatCompletionRunner extends EventStream_1.EventStream {
     constructor() {
@@ -10726,7 +10766,7 @@ _AbstractChatCompletionRunner_instances = new WeakSet(), _AbstractChatCompletion
 //# sourceMappingURL=AbstractChatCompletionRunner.js.map
 
 /***/ }),
-/* 89 */
+/* 90 */
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -10767,7 +10807,7 @@ exports.ParsingToolFunction = ParsingToolFunction;
 //# sourceMappingURL=RunnableFunction.js.map
 
 /***/ }),
-/* 90 */
+/* 91 */
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -10793,7 +10833,7 @@ exports.isPresent = isPresent;
 //# sourceMappingURL=chatCompletionUtils.js.map
 
 /***/ }),
-/* 91 */
+/* 92 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -10999,7 +11039,7 @@ _EventStream_connectedPromise = new WeakMap(), _EventStream_resolveConnectedProm
 //# sourceMappingURL=EventStream.js.map
 
 /***/ }),
-/* 92 */
+/* 93 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 "use strict";
@@ -11138,14 +11178,14 @@ exports.validateInputTools = validateInputTools;
 //# sourceMappingURL=parser.js.map
 
 /***/ }),
-/* 93 */
+/* 94 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ChatCompletionStreamingRunner = void 0;
-const ChatCompletionStream_1 = __webpack_require__(94);
+const ChatCompletionStream_1 = __webpack_require__(95);
 class ChatCompletionStreamingRunner extends ChatCompletionStream_1.ChatCompletionStream {
     static fromReadableStream(stream) {
         const runner = new ChatCompletionStreamingRunner(null);
@@ -11178,7 +11218,7 @@ exports.ChatCompletionStreamingRunner = ChatCompletionStreamingRunner;
 //# sourceMappingURL=ChatCompletionStreamingRunner.js.map
 
 /***/ }),
-/* 94 */
+/* 95 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -11198,10 +11238,10 @@ var _ChatCompletionStream_instances, _ChatCompletionStream_params, _ChatCompleti
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ChatCompletionStream = void 0;
 const error_1 = __webpack_require__(3);
-const AbstractChatCompletionRunner_1 = __webpack_require__(88);
+const AbstractChatCompletionRunner_1 = __webpack_require__(89);
 const streaming_1 = __webpack_require__(6);
-const parser_1 = __webpack_require__(92);
-const parser_2 = __webpack_require__(95);
+const parser_1 = __webpack_require__(93);
+const parser_2 = __webpack_require__(96);
 class ChatCompletionStream extends AbstractChatCompletionRunner_1.AbstractChatCompletionRunner {
     constructor(params) {
         super();
@@ -11687,7 +11727,7 @@ function assertNever(_x) { }
 //# sourceMappingURL=ChatCompletionStream.js.map
 
 /***/ }),
-/* 95 */
+/* 96 */
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -11939,7 +11979,7 @@ exports.partialParse = partialParse;
 //# sourceMappingURL=parser.js.map
 
 /***/ }),
-/* 96 */
+/* 97 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -11970,11 +12010,11 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Threads = void 0;
-const resource_1 = __webpack_require__(75);
+const resource_1 = __webpack_require__(76);
 const core_1 = __webpack_require__(4);
-const AssistantStream_1 = __webpack_require__(97);
-const MessagesAPI = __importStar(__webpack_require__(98));
-const RunsAPI = __importStar(__webpack_require__(99));
+const AssistantStream_1 = __webpack_require__(98);
+const MessagesAPI = __importStar(__webpack_require__(99));
+const RunsAPI = __importStar(__webpack_require__(100));
 class Threads extends resource_1.APIResource {
     constructor() {
         super(...arguments);
@@ -12053,7 +12093,7 @@ exports.Threads = Threads;
 //# sourceMappingURL=threads.js.map
 
 /***/ }),
-/* 97 */
+/* 98 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -12098,7 +12138,7 @@ exports.AssistantStream = void 0;
 const Core = __importStar(__webpack_require__(4));
 const streaming_1 = __webpack_require__(6);
 const error_1 = __webpack_require__(3);
-const EventStream_1 = __webpack_require__(91);
+const EventStream_1 = __webpack_require__(92);
 class AssistantStream extends EventStream_1.EventStream {
     constructor() {
         super(...arguments);
@@ -12640,7 +12680,7 @@ _AssistantStream_addEvent = function _AssistantStream_addEvent(event) {
 //# sourceMappingURL=AssistantStream.js.map
 
 /***/ }),
-/* 98 */
+/* 99 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -12671,10 +12711,10 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.MessagesPage = exports.Messages = void 0;
-const resource_1 = __webpack_require__(75);
+const resource_1 = __webpack_require__(76);
 const core_1 = __webpack_require__(4);
-const MessagesAPI = __importStar(__webpack_require__(98));
-const pagination_1 = __webpack_require__(71);
+const MessagesAPI = __importStar(__webpack_require__(99));
+const pagination_1 = __webpack_require__(72);
 class Messages extends resource_1.APIResource {
     /**
      * Create a message.
@@ -12735,7 +12775,7 @@ exports.MessagesPage = MessagesPage;
 //# sourceMappingURL=messages.js.map
 
 /***/ }),
-/* 99 */
+/* 100 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -12766,13 +12806,13 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.RunsPage = exports.Runs = void 0;
-const resource_1 = __webpack_require__(75);
+const resource_1 = __webpack_require__(76);
 const core_1 = __webpack_require__(4);
-const AssistantStream_1 = __webpack_require__(97);
+const AssistantStream_1 = __webpack_require__(98);
 const core_2 = __webpack_require__(4);
-const RunsAPI = __importStar(__webpack_require__(99));
-const StepsAPI = __importStar(__webpack_require__(100));
-const pagination_1 = __webpack_require__(71);
+const RunsAPI = __importStar(__webpack_require__(100));
+const StepsAPI = __importStar(__webpack_require__(101));
+const pagination_1 = __webpack_require__(72);
 class Runs extends resource_1.APIResource {
     constructor() {
         super(...arguments);
@@ -12933,7 +12973,7 @@ exports.RunsPage = RunsPage;
 //# sourceMappingURL=runs.js.map
 
 /***/ }),
-/* 100 */
+/* 101 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -12964,10 +13004,10 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.RunStepsPage = exports.Steps = void 0;
-const resource_1 = __webpack_require__(75);
+const resource_1 = __webpack_require__(76);
 const core_1 = __webpack_require__(4);
-const StepsAPI = __importStar(__webpack_require__(100));
-const pagination_1 = __webpack_require__(71);
+const StepsAPI = __importStar(__webpack_require__(101));
+const pagination_1 = __webpack_require__(72);
 class Steps extends resource_1.APIResource {
     retrieve(threadId, runId, stepId, query = {}, options) {
         if ((0, core_1.isRequestOptions)(query)) {
@@ -13000,7 +13040,7 @@ exports.RunStepsPage = RunStepsPage;
 //# sourceMappingURL=steps.js.map
 
 /***/ }),
-/* 101 */
+/* 102 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -13031,12 +13071,12 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.VectorStoresPage = exports.VectorStores = void 0;
-const resource_1 = __webpack_require__(75);
+const resource_1 = __webpack_require__(76);
 const core_1 = __webpack_require__(4);
-const VectorStoresAPI = __importStar(__webpack_require__(101));
-const FileBatchesAPI = __importStar(__webpack_require__(102));
-const FilesAPI = __importStar(__webpack_require__(104));
-const pagination_1 = __webpack_require__(71);
+const VectorStoresAPI = __importStar(__webpack_require__(102));
+const FileBatchesAPI = __importStar(__webpack_require__(103));
+const FilesAPI = __importStar(__webpack_require__(105));
+const pagination_1 = __webpack_require__(72);
 class VectorStores extends resource_1.APIResource {
     constructor() {
         super(...arguments);
@@ -13105,7 +13145,7 @@ exports.VectorStoresPage = VectorStoresPage;
 //# sourceMappingURL=vector-stores.js.map
 
 /***/ }),
-/* 102 */
+/* 103 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 "use strict";
@@ -13113,11 +13153,11 @@ exports.VectorStoresPage = VectorStoresPage;
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.VectorStoreFilesPage = exports.FileBatches = void 0;
-const resource_1 = __webpack_require__(75);
+const resource_1 = __webpack_require__(76);
 const core_1 = __webpack_require__(4);
 const core_2 = __webpack_require__(4);
-const Util_1 = __webpack_require__(103);
-const files_1 = __webpack_require__(104);
+const Util_1 = __webpack_require__(104);
+const files_1 = __webpack_require__(105);
 Object.defineProperty(exports, "VectorStoreFilesPage", ({ enumerable: true, get: function () { return files_1.VectorStoreFilesPage; } }));
 class FileBatches extends resource_1.APIResource {
     /**
@@ -13240,7 +13280,7 @@ exports.FileBatches = FileBatches;
 //# sourceMappingURL=file-batches.js.map
 
 /***/ }),
-/* 103 */
+/* 104 */
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -13272,7 +13312,7 @@ exports.allSettledWithThrow = allSettledWithThrow;
 //# sourceMappingURL=Util.js.map
 
 /***/ }),
-/* 104 */
+/* 105 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -13303,10 +13343,10 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.VectorStoreFilesPage = exports.Files = void 0;
-const resource_1 = __webpack_require__(75);
+const resource_1 = __webpack_require__(76);
 const core_1 = __webpack_require__(4);
-const FilesAPI = __importStar(__webpack_require__(104));
-const pagination_1 = __webpack_require__(71);
+const FilesAPI = __importStar(__webpack_require__(105));
+const pagination_1 = __webpack_require__(72);
 class Files extends resource_1.APIResource {
     /**
      * Create a vector store file by attaching a
@@ -13426,7 +13466,7 @@ exports.VectorStoreFilesPage = VectorStoreFilesPage;
 //# sourceMappingURL=files.js.map
 
 /***/ }),
-/* 105 */
+/* 106 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 "use strict";
@@ -13434,7 +13474,7 @@ exports.VectorStoreFilesPage = VectorStoreFilesPage;
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Completions = void 0;
-const resource_1 = __webpack_require__(75);
+const resource_1 = __webpack_require__(76);
 class Completions extends resource_1.APIResource {
     create(body, options) {
         return this._client.post('/completions', { body, ...options, stream: body.stream ?? false });
@@ -13446,7 +13486,7 @@ exports.Completions = Completions;
 //# sourceMappingURL=completions.js.map
 
 /***/ }),
-/* 106 */
+/* 107 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 "use strict";
@@ -13454,7 +13494,7 @@ exports.Completions = Completions;
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Embeddings = void 0;
-const resource_1 = __webpack_require__(75);
+const resource_1 = __webpack_require__(76);
 class Embeddings extends resource_1.APIResource {
     /**
      * Creates an embedding vector representing the input text.
@@ -13469,7 +13509,7 @@ exports.Embeddings = Embeddings;
 //# sourceMappingURL=embeddings.js.map
 
 /***/ }),
-/* 107 */
+/* 108 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -13500,13 +13540,13 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.FileObjectsPage = exports.Files = void 0;
-const resource_1 = __webpack_require__(75);
+const resource_1 = __webpack_require__(76);
 const core_1 = __webpack_require__(4);
 const core_2 = __webpack_require__(4);
 const error_1 = __webpack_require__(3);
 const Core = __importStar(__webpack_require__(4));
-const FilesAPI = __importStar(__webpack_require__(107));
-const pagination_1 = __webpack_require__(71);
+const FilesAPI = __importStar(__webpack_require__(108));
+const pagination_1 = __webpack_require__(72);
 class Files extends resource_1.APIResource {
     /**
      * Upload a file that can be used across various endpoints. Individual files can be
@@ -13601,54 +13641,6 @@ exports.FileObjectsPage = FileObjectsPage;
 //# sourceMappingURL=files.js.map
 
 /***/ }),
-/* 108 */
-/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
-
-"use strict";
-
-// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.FineTuning = void 0;
-const resource_1 = __webpack_require__(75);
-const JobsAPI = __importStar(__webpack_require__(109));
-class FineTuning extends resource_1.APIResource {
-    constructor() {
-        super(...arguments);
-        this.jobs = new JobsAPI.Jobs(this._client);
-    }
-}
-exports.FineTuning = FineTuning;
-(function (FineTuning) {
-    FineTuning.Jobs = JobsAPI.Jobs;
-    FineTuning.FineTuningJobsPage = JobsAPI.FineTuningJobsPage;
-    FineTuning.FineTuningJobEventsPage = JobsAPI.FineTuningJobEventsPage;
-})(FineTuning = exports.FineTuning || (exports.FineTuning = {}));
-//# sourceMappingURL=fine-tuning.js.map
-
-/***/ }),
 /* 109 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
@@ -13679,12 +13671,60 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.FineTuning = void 0;
+const resource_1 = __webpack_require__(76);
+const JobsAPI = __importStar(__webpack_require__(110));
+class FineTuning extends resource_1.APIResource {
+    constructor() {
+        super(...arguments);
+        this.jobs = new JobsAPI.Jobs(this._client);
+    }
+}
+exports.FineTuning = FineTuning;
+(function (FineTuning) {
+    FineTuning.Jobs = JobsAPI.Jobs;
+    FineTuning.FineTuningJobsPage = JobsAPI.FineTuningJobsPage;
+    FineTuning.FineTuningJobEventsPage = JobsAPI.FineTuningJobEventsPage;
+})(FineTuning = exports.FineTuning || (exports.FineTuning = {}));
+//# sourceMappingURL=fine-tuning.js.map
+
+/***/ }),
+/* 110 */
+/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+
+"use strict";
+
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.FineTuningJobEventsPage = exports.FineTuningJobsPage = exports.Jobs = void 0;
-const resource_1 = __webpack_require__(75);
+const resource_1 = __webpack_require__(76);
 const core_1 = __webpack_require__(4);
-const JobsAPI = __importStar(__webpack_require__(109));
-const CheckpointsAPI = __importStar(__webpack_require__(110));
-const pagination_1 = __webpack_require__(71);
+const JobsAPI = __importStar(__webpack_require__(110));
+const CheckpointsAPI = __importStar(__webpack_require__(111));
+const pagination_1 = __webpack_require__(72);
 class Jobs extends resource_1.APIResource {
     constructor() {
         super(...arguments);
@@ -13748,59 +13788,6 @@ exports.FineTuningJobEventsPage = FineTuningJobEventsPage;
 //# sourceMappingURL=jobs.js.map
 
 /***/ }),
-/* 110 */
-/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
-
-"use strict";
-
-// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.FineTuningJobCheckpointsPage = exports.Checkpoints = void 0;
-const resource_1 = __webpack_require__(75);
-const core_1 = __webpack_require__(4);
-const CheckpointsAPI = __importStar(__webpack_require__(110));
-const pagination_1 = __webpack_require__(71);
-class Checkpoints extends resource_1.APIResource {
-    list(fineTuningJobId, query = {}, options) {
-        if ((0, core_1.isRequestOptions)(query)) {
-            return this.list(fineTuningJobId, {}, query);
-        }
-        return this._client.getAPIList(`/fine_tuning/jobs/${fineTuningJobId}/checkpoints`, FineTuningJobCheckpointsPage, { query, ...options });
-    }
-}
-exports.Checkpoints = Checkpoints;
-class FineTuningJobCheckpointsPage extends pagination_1.CursorPage {
-}
-exports.FineTuningJobCheckpointsPage = FineTuningJobCheckpointsPage;
-(function (Checkpoints) {
-    Checkpoints.FineTuningJobCheckpointsPage = CheckpointsAPI.FineTuningJobCheckpointsPage;
-})(Checkpoints = exports.Checkpoints || (exports.Checkpoints = {}));
-//# sourceMappingURL=checkpoints.js.map
-
-/***/ }),
 /* 111 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
@@ -13831,33 +13818,27 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.Images = void 0;
-const resource_1 = __webpack_require__(75);
-const Core = __importStar(__webpack_require__(4));
-class Images extends resource_1.APIResource {
-    /**
-     * Creates a variation of a given image.
-     */
-    createVariation(body, options) {
-        return this._client.post('/images/variations', Core.multipartFormRequestOptions({ body, ...options }));
-    }
-    /**
-     * Creates an edited or extended image given an original image and a prompt.
-     */
-    edit(body, options) {
-        return this._client.post('/images/edits', Core.multipartFormRequestOptions({ body, ...options }));
-    }
-    /**
-     * Creates an image given a prompt.
-     */
-    generate(body, options) {
-        return this._client.post('/images/generations', { body, ...options });
+exports.FineTuningJobCheckpointsPage = exports.Checkpoints = void 0;
+const resource_1 = __webpack_require__(76);
+const core_1 = __webpack_require__(4);
+const CheckpointsAPI = __importStar(__webpack_require__(111));
+const pagination_1 = __webpack_require__(72);
+class Checkpoints extends resource_1.APIResource {
+    list(fineTuningJobId, query = {}, options) {
+        if ((0, core_1.isRequestOptions)(query)) {
+            return this.list(fineTuningJobId, {}, query);
+        }
+        return this._client.getAPIList(`/fine_tuning/jobs/${fineTuningJobId}/checkpoints`, FineTuningJobCheckpointsPage, { query, ...options });
     }
 }
-exports.Images = Images;
-(function (Images) {
-})(Images = exports.Images || (exports.Images = {}));
-//# sourceMappingURL=images.js.map
+exports.Checkpoints = Checkpoints;
+class FineTuningJobCheckpointsPage extends pagination_1.CursorPage {
+}
+exports.FineTuningJobCheckpointsPage = FineTuningJobCheckpointsPage;
+(function (Checkpoints) {
+    Checkpoints.FineTuningJobCheckpointsPage = CheckpointsAPI.FineTuningJobCheckpointsPage;
+})(Checkpoints = exports.Checkpoints || (exports.Checkpoints = {}));
+//# sourceMappingURL=checkpoints.js.map
 
 /***/ }),
 /* 112 */
@@ -13890,10 +13871,69 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.Images = void 0;
+const resource_1 = __webpack_require__(76);
+const Core = __importStar(__webpack_require__(4));
+class Images extends resource_1.APIResource {
+    /**
+     * Creates a variation of a given image.
+     */
+    createVariation(body, options) {
+        return this._client.post('/images/variations', Core.multipartFormRequestOptions({ body, ...options }));
+    }
+    /**
+     * Creates an edited or extended image given an original image and a prompt.
+     */
+    edit(body, options) {
+        return this._client.post('/images/edits', Core.multipartFormRequestOptions({ body, ...options }));
+    }
+    /**
+     * Creates an image given a prompt.
+     */
+    generate(body, options) {
+        return this._client.post('/images/generations', { body, ...options });
+    }
+}
+exports.Images = Images;
+(function (Images) {
+})(Images = exports.Images || (exports.Images = {}));
+//# sourceMappingURL=images.js.map
+
+/***/ }),
+/* 113 */
+/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+
+"use strict";
+
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ModelsPage = exports.Models = void 0;
-const resource_1 = __webpack_require__(75);
-const ModelsAPI = __importStar(__webpack_require__(112));
-const pagination_1 = __webpack_require__(71);
+const resource_1 = __webpack_require__(76);
+const ModelsAPI = __importStar(__webpack_require__(113));
+const pagination_1 = __webpack_require__(72);
 class Models extends resource_1.APIResource {
     /**
      * Retrieves a model instance, providing basic information about the model such as
@@ -13930,7 +13970,7 @@ exports.ModelsPage = ModelsPage;
 //# sourceMappingURL=models.js.map
 
 /***/ }),
-/* 113 */
+/* 114 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 "use strict";
@@ -13938,10 +13978,11 @@ exports.ModelsPage = ModelsPage;
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Moderations = void 0;
-const resource_1 = __webpack_require__(75);
+const resource_1 = __webpack_require__(76);
 class Moderations extends resource_1.APIResource {
     /**
-     * Classifies if text is potentially harmful.
+     * Classifies if text and/or image inputs are potentially harmful. Learn more in
+     * the [moderation guide](https://platform.openai.com/docs/guides/moderation).
      */
     create(body, options) {
         return this._client.post('/moderations', { body, ...options });
@@ -13953,7 +13994,7 @@ exports.Moderations = Moderations;
 //# sourceMappingURL=moderations.js.map
 
 /***/ }),
-/* 114 */
+/* 115 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -13984,8 +14025,8 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Uploads = void 0;
-const resource_1 = __webpack_require__(75);
-const PartsAPI = __importStar(__webpack_require__(115));
+const resource_1 = __webpack_require__(76);
+const PartsAPI = __importStar(__webpack_require__(116));
 class Uploads extends resource_1.APIResource {
     constructor() {
         super(...arguments);
@@ -14048,7 +14089,7 @@ exports.Uploads = Uploads;
 //# sourceMappingURL=uploads.js.map
 
 /***/ }),
-/* 115 */
+/* 116 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -14079,7 +14120,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Parts = void 0;
-const resource_1 = __webpack_require__(75);
+const resource_1 = __webpack_require__(76);
 const Core = __importStar(__webpack_require__(4));
 class Parts extends resource_1.APIResource {
     /**
